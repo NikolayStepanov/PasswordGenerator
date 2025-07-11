@@ -1,3 +1,5 @@
+// Package app initializes and runs the main application components,
+// including configuration, server, routing, services, and data access
 package app
 
 import (
@@ -20,46 +22,51 @@ type muxer interface {
 	Handle(pattern string, handler http.Handler)
 }
 
+// App represents the main application structure
 type App struct {
-	config     *config.Config
+	cnf        *config.Config
 	mux        muxer
-	server     *server.Server
+	serverHTTP *server.Server
 	services   *service.Services
 	repository *repository.Repository
 }
 
-func RegisterPasswordHandlers(config *config.Config, mux *http.ServeMux, handlerResponder *handler.Handler) {
+// RegisterPasswordHandlers registers HTTP handlers related to password operations
+func RegisterPasswordHandlers(cnf *config.Config, mux *http.ServeMux, handlerResp *handler.Handler) {
+	mux.Handle(cnf.PathHandles.Password, handler.NewGetPasswordHandler(cnf.PathHandles.Password, handlerResp))
 }
 
-func NewApp(config *config.Config) (*App, error) {
+// NewApp creates and initializes a new application based on the provided configuration
+func NewApp(cnf *config.Config) (*App, error) {
 	mux := http.NewServeMux()
-	mux.HandleFunc(config.PathHandles.Index, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(cnf.PathHandles.Password, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "hello")
 	})
-	server := server.NewServer(config, mux)
+	serverHTTP := server.NewServer(cnf, mux)
 
 	return &App{
-		config: config,
-		mux:    mux,
-		server: server,
+		cnf:        cnf,
+		mux:        mux,
+		serverHTTP: serverHTTP,
 	}, nil
 }
 
+// Run launching the application
 func Run() {
-
 	cfg := config.Init()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer cancel()
 
-	//HTTP Server
+	// HTTP Server
 	app, err := NewApp(cfg)
 	if err != nil {
-		log.Fatalf("error new app: %s \n", err)
+		log.Panicf("error new app: %s \n", err)
 	}
+
 	go func() {
 		defer cancel()
-		if err := app.server.Run(); err != nil {
-			log.Printf("error occurred while running http server: %s \n", err.Error())
+		if errApp := app.serverHTTP.Run(); errApp != nil {
+			log.Printf("error occurred while running http server: %s \n", errApp.Error())
 		}
 	}()
 
@@ -73,8 +80,8 @@ func Run() {
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelShutdown()
 
-	if err = app.server.Stop(ctxShutdown); err != nil {
-		log.Printf("error occured on server shutting down: %s \n", err.Error())
+	if err = app.serverHTTP.Stop(ctxShutdown); err != nil {
+		log.Printf("error occurred on server shutting down: %s \n", err.Error())
 	}
 	log.Println("password generator stopped")
 }
