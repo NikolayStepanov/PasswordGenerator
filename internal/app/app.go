@@ -4,16 +4,17 @@ package app
 
 import (
 	"context"
-	"fmt"
-	"github.com/NikolayStepanov/PasswordGenerator/internal/delivery/http/handler"
-	"github.com/NikolayStepanov/PasswordGenerator/internal/repository"
-	"github.com/NikolayStepanov/PasswordGenerator/internal/server"
-	"github.com/NikolayStepanov/PasswordGenerator/internal/service"
 	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/NikolayStepanov/PasswordGenerator/internal/delivery/http/handler"
+	"github.com/NikolayStepanov/PasswordGenerator/internal/repository"
+	"github.com/NikolayStepanov/PasswordGenerator/internal/server"
+	"github.com/NikolayStepanov/PasswordGenerator/internal/service"
+	"github.com/NikolayStepanov/PasswordGenerator/internal/service/password"
 
 	"github.com/NikolayStepanov/PasswordGenerator/internal/config"
 )
@@ -39,15 +40,18 @@ func RegisterPasswordHandlers(cnf *config.Config, mux *http.ServeMux, handlerRes
 // NewApp creates and initializes a new application based on the provided configuration
 func NewApp(cnf *config.Config) (*App, error) {
 	mux := http.NewServeMux()
-	mux.HandleFunc(cnf.PathHandles.Password, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "hello")
-	})
+
 	serverHTTP := server.NewServer(cnf, mux)
 
+	passwordService := password.NewPasswordService(nil)
+	services := service.NewServices(passwordService)
+	handlerResponder := handler.NewHandler(services.Password)
+	RegisterPasswordHandlers(cnf, mux, handlerResponder)
 	return &App{
 		cnf:        cnf,
 		mux:        mux,
 		serverHTTP: serverHTTP,
+		services:   services,
 	}, nil
 }
 

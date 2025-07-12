@@ -1,7 +1,10 @@
 // Package config provides application configuration structures and initialization logic
 package config
 
-import "time"
+import (
+	"net/http"
+	"time"
+)
 
 const (
 	defaultHTTPHost = ""     // defaultHttpHost address for HTTP server to bind
@@ -44,7 +47,7 @@ func Init() *Config {
 	cfg.HTTP.IdleTimeout = 120 * time.Second
 
 	cfg.PathHandles = Paths{
-		Password: "/password",
+		Password: http.MethodPost + " " + "/password",
 	}
 
 	return &cfg
