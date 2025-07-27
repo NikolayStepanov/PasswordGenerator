@@ -8,6 +8,7 @@ import (
 	"github.com/NikolayStepanov/PasswordGenerator/internal/domain/dto"
 )
 
+// Password is the service interface for password generation operations
 type Password interface {
 	GetNewPassword(ctx context.Context, options dto.GeneratePasswordOptions) (string, error)
 }

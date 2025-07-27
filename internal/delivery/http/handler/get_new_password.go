@@ -48,7 +48,9 @@ func (gp *GetNewPasswordHandler) getNewPassword(w http.ResponseWriter, r *http.R
 
 	response := map[string]string{"password": pass}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if errEncode := json.NewEncoder(w).Encode(response); errEncode != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }
 
 // NewGetPasswordHandler creates and returns a new instance of GetNewPasswordHandler

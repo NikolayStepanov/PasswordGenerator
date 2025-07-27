@@ -6,22 +6,83 @@ import (
 	"errors"
 	"math/big"
 	"strings"
+	"unicode"
 
 	"github.com/NikolayStepanov/PasswordGenerator/internal/domain/dto"
 	"github.com/NikolayStepanov/PasswordGenerator/internal/repository/memory"
 	"github.com/sethvargo/go-password/password"
 )
 
-type PasswordService struct {
+const (
+	defaultGeneratePasswordAttempts = 1000 // Maximum password generation attempts
+	digits                          = "0123456789"
+)
+
+var (
+	// ErrInvalidCharacter indicates that a password contains disallowed characters
+	ErrInvalidCharacter = errors.New("invalid character in password")
+
+	// ErrPasswordGeneration indicates that password generation failed after maximum attempts
+	ErrPasswordGeneration = errors.New("unable to generate password")
+
+	// ErrInvalidNumberLength indicates invalid numeric string length
+	ErrInvalidNumberLength = errors.New("number length must be between 1 and 10 digits")
+)
+
+// Service implements password generation and management business logic
+type Service struct {
 	passwordStorage memory.PasswordStorage
+}
+
+func passwordRequirementsMask(inclUppercase, inclLowercase, inclDigits bool) byte {
+	var mask byte
+	mask = byte(0)
+	if inclLowercase {
+		mask |= 1 << 0
+	}
+	if inclUppercase {
+		mask |= 1 << 1
+	}
+	if inclDigits {
+		mask |= 1 << 2
+	}
+	return mask
+}
+
+func checkPasswordRequirements(pass string, requirementsMask byte) (bool, error) {
+	var (
+		currentMask byte
+		marching    bool
+	)
+
+	currentMask = byte(0)
+
+	for _, val := range pass {
+		switch {
+		case unicode.IsLower(val):
+			currentMask |= 1 << 0
+		case unicode.IsUpper(val):
+			currentMask |= 1 << 1
+		case unicode.IsDigit(val):
+			currentMask |= 1 << 2
+		default:
+			return false, ErrInvalidCharacter
+		}
+
+		if requirementsMask == currentMask {
+			marching = true
+			break
+		}
+	}
+	return marching, nil
 }
 
 func generateUniqueNumericPassword(length int) (string, error) {
 	if length < 1 || length > 10 {
-		return "", errors.New("password length must be between 1 and 10")
+		return "", ErrInvalidNumberLength
 	}
 
-	digits := []byte("0123456789")
+	digitsVal := []byte(digits)
 
 	for i := 0; i < length; i++ {
 		limit := int64(10 - i)
@@ -30,10 +91,10 @@ func generateUniqueNumericPassword(length int) (string, error) {
 			return "", err
 		}
 		idx := i + int(j.Int64())
-		digits[i], digits[idx] = digits[idx], digits[i]
+		digitsVal[i], digitsVal[idx] = digitsVal[idx], digitsVal[i]
 	}
 
-	return string(digits[:length]), nil
+	return string(digitsVal[:length]), nil
 }
 
 func randIntMax10(length int) int {
@@ -45,7 +106,7 @@ func randIntMax10(length int) int {
 	return int(n.Int64())
 }
 
-func generatePassword(length uint8, inclUppercase bool, inclLowercase bool, inclDigits bool) (string, error) {
+func generatePassword(length uint8, inclUppercase, inclLowercase, inclDigits bool) (string, error) {
 	var (
 		numDigits int
 		noUpper   bool
@@ -79,21 +140,35 @@ func generatePassword(length uint8, inclUppercase bool, inclLowercase bool, incl
 			return "", err
 		}
 	}
-
 	return pass, nil
 }
 
-func (ps *PasswordService) GetNewPassword(ctx context.Context, options dto.GeneratePasswordOptions) (string, error) {
-	return generatePassword(
-		options.Length,
-		options.IncludeUppercase,
-		options.IncludeLowercase,
-		options.IncludeDigits,
-	)
+// GetNewPassword generates a new password using the provided options
+func (ps *Service) GetNewPassword(ctx context.Context, options dto.GeneratePasswordOptions) (string, error) {
+	passwordReqMask := passwordRequirementsMask(options.IncludeUppercase, options.IncludeLowercase, options.IncludeDigits)
+
+	for i := 0; i < defaultGeneratePasswordAttempts; i++ {
+		pass, err := generatePassword(
+			options.Length,
+			options.IncludeUppercase,
+			options.IncludeLowercase,
+			options.IncludeDigits,
+		)
+		if err != nil {
+			return "", err
+		}
+		if ok, errCheck := checkPasswordRequirements(pass, passwordReqMask); ok {
+			if errCheck != nil {
+				return "", errCheck
+			}
+			return pass, nil
+		}
+	}
+	return "", ErrPasswordGeneration
 }
 
-func NewPasswordService(passwordStorage *memory.PasswordStorage) *PasswordService {
-	return &PasswordService{
+func NewPasswordService(passwordStorage *memory.PasswordStorage) *Service {
+	return &Service{
 		//passwordStorage: passwordStorage,
 	}
 }
